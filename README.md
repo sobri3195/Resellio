@@ -22,7 +22,15 @@ Dashboard tool importir/reseller UMKM tanpa backend tradisional, siap deploy ke 
    - Simpan jadwal posting (tanggal/jam/channel).
    - Opsional kirim payload ke webhook/Meta relay endpoint (mis. Vercel Function, n8n, Make, Zapier).
 
-5. **Content Calendar visual (localStorage)**
+
+5. **Relay Response Formatter**
+   - Route serverless `app/api/relay/format` untuk menormalkan hasil job `instagram/facebook_page`.
+   - Output selalu konsisten:
+     - `ok=true` jika minimal satu job `scheduled/published`.
+     - `results[]` berisi `channel`, `job_id`, `status`, dan `message`.
+   - Error message dipadatkan (contoh: `account_not_connected`, `token_expired`, `no_media`).
+
+6. **Content Calendar visual (localStorage)**
    - Menampilkan daftar jadwal posting secara visual.
    - Filter channel, update status (`draft/scheduled/posted`), dan hapus item.
    - Data tersimpan di browser (`localStorage`) tanpa database eksternal.
