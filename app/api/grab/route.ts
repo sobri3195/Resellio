@@ -63,13 +63,49 @@ const inferSource = (url: string): string => {
   return 'Marketplace';
 };
 
+const inferNiche = (title: string) => {
+  const normalized = title.toLowerCase();
+
+  if (/(hijab|dress|baju|kaos|jaket|celana|fashion|tas|sepatu|rok)/i.test(normalized)) return 'Fashion';
+  if (/(skincare|serum|masker|kosmetik|lipstik|makeup|sabun|parfum)/i.test(normalized)) return 'Beauty';
+  if (/(botol|tumbler|rak|dapur|organizer|sprei|bantal|karpet|home)/i.test(normalized)) return 'Home Living';
+  if (/(lampu|kabel|charger|headset|earphone|speaker|bluetooth|smartwatch|gadget)/i.test(normalized)) return 'Gadget';
+  if (/(bayi|anak|mainan|stroller|popok|edukasi)/i.test(normalized)) return 'Ibu & Anak';
+
+  return 'Produk Viral';
+};
+
+const buildAutoHashtags = (title: string, niche: string, source: string) => {
+  const words = title
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length >= 4)
+    .slice(0, 4);
+
+  const fixedTags = ['reseller', 'jualanonline', 'produkviral', 'importir', niche, source];
+  const clean = [...fixedTags, ...words]
+    .map((tag) =>
+      tag
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]/gu, '')
+        .trim()
+        .replace(/\s+/g, '')
+    )
+    .filter(Boolean);
+
+  return [...new Set(clean)].slice(0, 10);
+};
+
 const safeFallback = (url: string) => ({
   title: 'Produk Import Best Seller',
   image: 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=1200&q=80&auto=format&fit=crop',
   price: 120000,
   source: inferSource(url),
   currency: 'IDR',
-  url
+  url,
+  niche: 'Produk Viral',
+  hashtags: ['reseller', 'jualanonline', 'produkviral', 'importir']
 });
 
 export async function POST(request: NextRequest) {
@@ -118,13 +154,18 @@ export async function POST(request: NextRequest) {
     const image = parseImage(html);
     const price = parsePrice(html) || 120000;
 
+    const source = inferSource(parsedUrl.toString());
+    const niche = inferNiche(title);
+
     return NextResponse.json({
       title,
       image,
       price,
-      source: inferSource(parsedUrl.toString()),
+      source,
       currency: 'IDR',
-      url: parsedUrl.toString()
+      url: parsedUrl.toString(),
+      niche,
+      hashtags: buildAutoHashtags(title, niche, source)
     });
   } catch {
     return NextResponse.json(safeFallback(parsedUrl.toString()), { status: 200 });
