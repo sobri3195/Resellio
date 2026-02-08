@@ -7,6 +7,8 @@ type ProductData = {
   image: string;
   price: number;
   source: string;
+  currency: string;
+  url: string;
 };
 
 type CalendarItem = {
@@ -15,30 +17,64 @@ type CalendarItem = {
   time: string;
   caption: string;
   channel: 'instagram' | 'facebook';
-  status: 'draft' | 'scheduled';
+  image?: string;
+  productTitle?: string;
+  status: 'draft' | 'scheduled' | 'posted';
 };
 
-const STORAGE_KEY = 'resellio-calendar-items';
+type Tone = 'friendly' | 'urgent' | 'premium';
+
+const STORAGE_CALENDAR_KEY = 'resellio-calendar-items-v2';
+const STORAGE_SETTINGS_KEY = 'resellio-user-settings-v2';
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
 
-function inferMarket(url: string): string {
-  if (url.includes('shopee')) return 'Shopee';
-  if (url.includes('tokopedia')) return 'Tokopedia';
-  if (url.includes('alibaba')) return 'Alibaba';
-  if (url.includes('1688')) return '1688';
-  if (url.includes('aliexpress')) return 'AliExpress';
-  return 'Marketplace';
+function normalizeHashtag(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .trim()
+    .replace(/\s+/g, '');
 }
 
-function buildCaption(niche: string, title: string, sellingPrice: number, tone: string) {
-  const emoji = tone === 'friendly' ? '✨🔥' : tone === 'premium' ? '💎🖤' : '⚡📦';
-  const cta = tone === 'premium' ? 'DM sekarang untuk order eksklusif!' : 'Klik link bio / DM untuk order sekarang!';
+function buildCaption(niche: string, title: string, sellingPrice: number, tone: Tone, extraHashtags: string[]) {
+  const styles: Record<Tone, { emoji: string; cta: string; opener: string }> = {
+    friendly: {
+      emoji: '✨🔥',
+      opener: 'Siap bikin etalase toko kamu makin standout!',
+      cta: 'Klik link bio / DM sekarang, stok terbatas!'},
+    urgent: {
+      emoji: '⚡📦',
+      opener: 'Flash deal import hari ini, jangan sampai kehabisan!',
+      cta: 'Amankan slot order kamu sekarang juga via DM!'
+    },
+    premium: {
+      emoji: '💎🖤',
+      opener: 'Pilihan premium untuk pelanggan yang mencari kualitas terbaik.',
+      cta: 'DM untuk order eksklusif & harga reseller spesial.'
+    }
+  };
 
-  return `${emoji} ${title}\n\nProduk ${niche} siap bantu jualan kamu makin cuan!\nHarga mulai ${formatCurrency(sellingPrice)} dengan kualitas import terpercaya.\n\n✅ Ready stok\n✅ Bisa dropship\n✅ Cocok untuk reseller UMKM\n\n${cta}\n\n#reseller #importir #umkm #jualanonline #${niche
-    .toLowerCase()
-    .replace(/\s+/g, '')} #produkhits`;
+  const baseTags = ['reseller', 'importir', 'umkm', 'jualanonline', normalizeHashtag(niche), 'produkhits'];
+  const mergedTags = [...new Set([...baseTags, ...extraHashtags.map(normalizeHashtag).filter(Boolean)])]
+    .map((tag) => `#${tag}`)
+    .join(' ');
+
+  const theme = styles[tone];
+
+  return `${theme.emoji} ${title}
+
+${theme.opener}
+Harga rekomendasi jual mulai ${formatCurrency(sellingPrice)}.
+
+✅ Siap dijual ulang
+✅ Support dropship/reseller
+✅ Cocok untuk UMKM yang ingin scale-up
+
+${theme.cta}
+
+${mergedTags}`;
 }
 
 export default function HomePage() {
@@ -53,8 +89,10 @@ export default function HomePage() {
   const [ads, setAds] = useState(8000);
 
   const [niche, setNiche] = useState('Fashion Wanita');
-  const [tone, setTone] = useState<'friendly' | 'urgent' | 'premium'>('friendly');
+  const [tone, setTone] = useState<Tone>('friendly');
+  const [extraTagsInput, setExtraTagsInput] = useState('');
   const [caption, setCaption] = useState('');
+  const [captionStatus, setCaptionStatus] = useState('');
 
   const [items, setItems] = useState<CalendarItem[]>([]);
   const [scheduleDate, setScheduleDate] = useState('');
@@ -62,25 +100,65 @@ export default function HomePage() {
   const [channel, setChannel] = useState<'instagram' | 'facebook'>('instagram');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
+  const [calendarFilter, setCalendarFilter] = useState<'all' | 'instagram' | 'facebook'>('all');
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      setItems(JSON.parse(saved));
+    const savedItems = localStorage.getItem(STORAGE_CALENDAR_KEY);
+    const savedSettings = localStorage.getItem(STORAGE_SETTINGS_KEY);
+
+    if (savedItems) {
+      setItems(JSON.parse(savedItems) as CalendarItem[]);
+    }
+
+    if (savedSettings) {
+      const parsed = JSON.parse(savedSettings) as {
+        markup: number;
+        shipping: number;
+        platformFee: number;
+        ads: number;
+        niche: string;
+        tone: Tone;
+        extraTagsInput: string;
+        webhookUrl: string;
+      };
+
+      setMarkup(parsed.markup ?? 25);
+      setShipping(parsed.shipping ?? 12000);
+      setPlatformFee(parsed.platformFee ?? 5000);
+      setAds(parsed.ads ?? 8000);
+      setNiche(parsed.niche ?? 'Fashion Wanita');
+      setTone(parsed.tone ?? 'friendly');
+      setExtraTagsInput(parsed.extraTagsInput ?? '');
+      setWebhookUrl(parsed.webhookUrl ?? '');
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    localStorage.setItem(STORAGE_CALENDAR_KEY, JSON.stringify(items));
   }, [items]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_SETTINGS_KEY,
+      JSON.stringify({ markup, shipping, platformFee, ads, niche, tone, extraTagsInput, webhookUrl })
+    );
+  }, [ads, extraTagsInput, markup, niche, platformFee, shipping, tone, webhookUrl]);
 
   const baseCost = product?.price ?? 0;
   const marginValue = useMemo(() => (baseCost * markup) / 100, [baseCost, markup]);
   const finalPrice = useMemo(() => baseCost + marginValue + shipping + platformFee + ads, [ads, baseCost, marginValue, platformFee, shipping]);
+  const estimatedProfit = useMemo(() => finalPrice - baseCost - shipping - platformFee - ads, [ads, baseCost, finalPrice, platformFee, shipping]);
+
+  const filteredItems = useMemo(
+    () => items.filter((item) => (calendarFilter === 'all' ? true : item.channel === calendarFilter)),
+    [calendarFilter, items]
+  );
+
+  const extraHashtags = useMemo(() => extraTagsInput.split(',').map((value) => value.trim()).filter(Boolean), [extraTagsInput]);
 
   const handleGrabProduct = async (event: FormEvent) => {
     event.preventDefault();
-    if (!link) return;
+    if (!link.trim()) return;
 
     setLoadingGrabber(true);
     setGrabberError('');
@@ -89,16 +167,17 @@ export default function HomePage() {
       const response = await fetch('/api/grab', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: link })
+        body: JSON.stringify({ url: link.trim() })
       });
 
-      if (!response.ok) {
-        throw new Error('Gagal mengambil metadata produk.');
+      const data = (await response.json()) as ProductData | { error: string };
+
+      if (!response.ok || 'error' in data) {
+        throw new Error('error' in data ? data.error : 'Gagal mengambil metadata produk.');
       }
 
-      const data = (await response.json()) as ProductData;
       setProduct(data);
-      setCaption(buildCaption(niche, data.title, finalPrice || data.price, tone));
+      setCaption(buildCaption(niche, data.title, finalPrice || data.price, tone, extraHashtags));
     } catch (error) {
       setGrabberError(error instanceof Error ? error.message : 'Terjadi kesalahan.');
     } finally {
@@ -108,7 +187,14 @@ export default function HomePage() {
 
   const handleGenerateCaption = () => {
     if (!product) return;
-    setCaption(buildCaption(niche, product.title, finalPrice || product.price, tone));
+    setCaption(buildCaption(niche, product.title, finalPrice || product.price, tone, extraHashtags));
+    setCaptionStatus('Caption berhasil diperbarui berdasarkan pricing terbaru.');
+  };
+
+  const handleCopyCaption = async () => {
+    if (!caption) return;
+    await navigator.clipboard.writeText(caption);
+    setCaptionStatus('Caption berhasil disalin ke clipboard.');
   };
 
   const handleSchedule = async (event: FormEvent) => {
@@ -124,6 +210,8 @@ export default function HomePage() {
       time: scheduleTime,
       caption,
       channel,
+      image: product?.image,
+      productTitle: product?.title,
       status: 'scheduled'
     };
 
@@ -139,12 +227,14 @@ export default function HomePage() {
             channel,
             scheduleAt: `${scheduleDate}T${scheduleTime}`,
             image: product?.image ?? null,
-            productTitle: product?.title ?? null
+            productTitle: product?.title ?? null,
+            productUrl: product?.url ?? link.trim() || null,
+            source: product?.source ?? null
           })
         });
-        setScheduleStatus('Jadwal tersimpan dan payload dikirim ke webhook eksternal.');
+        setScheduleStatus('Jadwal tersimpan dan payload sukses dikirim ke webhook/Meta relay.');
       } catch {
-        setScheduleStatus('Jadwal tersimpan lokal. Pengiriman webhook gagal, cek URL webhook.');
+        setScheduleStatus('Jadwal tersimpan lokal. Pengiriman webhook gagal, cek URL endpoint.');
       }
       return;
     }
@@ -152,11 +242,19 @@ export default function HomePage() {
     setScheduleStatus('Jadwal tersimpan di Content Calendar (localStorage).');
   };
 
+  const updateItemStatus = (id: string, status: CalendarItem['status']) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, status } : item)));
+  };
+
+  const deleteItem = (id: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== id));
+  };
+
   return (
     <main className="container">
       <header className="hero">
         <h1>Resellio Dashboard</h1>
-        <p>One-stop tools untuk importir & reseller: grab produk, pricing cerdas, caption AI, auto posting, dan content calendar.</p>
+        <p>Tool produktivitas importir & reseller UMKM berbasis Next.js: grab link produk, pricing engine, caption AI, scheduling, dan calendar visual.</p>
       </header>
 
       <section className="grid">
@@ -170,7 +268,7 @@ export default function HomePage() {
               onChange={(event) => setLink(event.target.value)}
               required
             />
-            <button type="submit" disabled={loadingGrabber}>{loadingGrabber ? 'Mengambil data...' : 'Ambil Metadata Produk'}</button>
+            <button type="submit" disabled={loadingGrabber}>{loadingGrabber ? 'Mengambil metadata...' : 'Ambil Metadata Produk'}</button>
           </form>
           {grabberError ? <p className="error">{grabberError}</p> : null}
           {product ? (
@@ -180,6 +278,7 @@ export default function HomePage() {
                 <strong>{product.title}</strong>
                 <p>Sumber: {product.source}</p>
                 <p>Harga sumber: {formatCurrency(product.price)}</p>
+                <a href={product.url} target="_blank" rel="noreferrer">Buka produk asal</a>
               </div>
             </div>
           ) : null}
@@ -188,15 +287,16 @@ export default function HomePage() {
         <article className="card">
           <h2>2) Smart Pricing Engine</h2>
           <div className="stack compact">
-            <label>Markup (%)<input type="number" value={markup} onChange={(event) => setMarkup(Number(event.target.value))} /></label>
-            <label>Biaya Shipping<input type="number" value={shipping} onChange={(event) => setShipping(Number(event.target.value))} /></label>
-            <label>Biaya Platform<input type="number" value={platformFee} onChange={(event) => setPlatformFee(Number(event.target.value))} /></label>
-            <label>Biaya Iklan<input type="number" value={ads} onChange={(event) => setAds(Number(event.target.value))} /></label>
+            <label>Markup (%)<input type="number" value={markup} onChange={(event) => setMarkup(Number(event.target.value) || 0)} /></label>
+            <label>Biaya Shipping<input type="number" value={shipping} onChange={(event) => setShipping(Number(event.target.value) || 0)} /></label>
+            <label>Biaya Platform<input type="number" value={platformFee} onChange={(event) => setPlatformFee(Number(event.target.value) || 0)} /></label>
+            <label>Biaya Iklan<input type="number" value={ads} onChange={(event) => setAds(Number(event.target.value) || 0)} /></label>
           </div>
           <div className="priceResult">
             <p>Base cost: <strong>{formatCurrency(baseCost)}</strong></p>
             <p>Margin ({markup}%): <strong>{formatCurrency(marginValue)}</strong></p>
-            <p>Harga jual disarankan: <strong>{formatCurrency(finalPrice)}</strong></p>
+            <p>Estimasi profit bersih: <strong>{formatCurrency(estimatedProfit)}</strong></p>
+            <p>Harga jual rekomendasi: <strong>{formatCurrency(finalPrice)}</strong></p>
           </div>
         </article>
 
@@ -204,16 +304,23 @@ export default function HomePage() {
           <h2>3) AI Caption Generator</h2>
           <div className="stack compact">
             <label>Niche produk<input value={niche} onChange={(event) => setNiche(event.target.value)} /></label>
+            <label>Hashtag tambahan (pisahkan dengan koma)
+              <input value={extraTagsInput} onChange={(event) => setExtraTagsInput(event.target.value)} placeholder="contoh: grosirbaju, fashionmurah" />
+            </label>
             <label>
               Tone caption
-              <select value={tone} onChange={(event) => setTone(event.target.value as 'friendly' | 'urgent' | 'premium')}>
+              <select value={tone} onChange={(event) => setTone(event.target.value as Tone)}>
                 <option value="friendly">Friendly</option>
                 <option value="urgent">Urgent Sales</option>
                 <option value="premium">Premium</option>
               </select>
             </label>
-            <button onClick={handleGenerateCaption} type="button" disabled={!product}>Generate Caption</button>
+            <div className="buttonRow">
+              <button onClick={handleGenerateCaption} type="button" disabled={!product}>Generate Caption</button>
+              <button onClick={handleCopyCaption} type="button" disabled={!caption}>Copy Caption</button>
+            </div>
             <textarea rows={8} value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Caption AI akan muncul di sini..." />
+            {captionStatus ? <p className="muted">{captionStatus}</p> : null}
           </div>
         </article>
 
@@ -229,26 +336,43 @@ export default function HomePage() {
                 <option value="facebook">Facebook Page</option>
               </select>
             </label>
-            <label>Webhook/Meta Endpoint (opsional)<input type="url" placeholder="https://example.com/meta-webhook" value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} /></label>
+            <label>Webhook/Meta Endpoint (opsional)
+              <input type="url" placeholder="https://example.com/meta-webhook" value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} />
+            </label>
             <button type="submit">Simpan & Kirim Jadwal</button>
           </form>
-          <p className="muted">Integrasi production: hubungkan endpoint ini ke Meta Graph API relay (serverless function / automation tool).</p>
+          <p className="muted">Untuk produksi, endpoint dapat diarahkan ke Meta Graph API relay (Vercel Function / Make / n8n / Zapier).</p>
           {scheduleStatus ? <p>{scheduleStatus}</p> : null}
         </article>
       </section>
 
       <section className="card">
-        <h2>5) Content Calendar (localStorage)</h2>
+        <div className="calendarHeader">
+          <h2>5) Content Calendar (localStorage)</h2>
+          <select value={calendarFilter} onChange={(event) => setCalendarFilter(event.target.value as 'all' | 'instagram' | 'facebook')}>
+            <option value="all">Semua channel</option>
+            <option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option>
+          </select>
+        </div>
+
         <div className="calendar">
-          {items.length === 0 ? <p className="muted">Belum ada jadwal. Tambahkan dari panel scheduling.</p> : null}
-          {items.map((item) => (
+          {filteredItems.length === 0 ? <p className="muted">Belum ada jadwal. Tambahkan dari panel scheduling.</p> : null}
+          {filteredItems.map((item) => (
             <div key={item.id} className="calendarItem">
-              <div>
-                <strong>{item.channel.toUpperCase()}</strong>
-                <p>{item.date} • {item.time}</p>
+              <div className="calendarTop">
+                <div>
+                  <strong>{item.channel.toUpperCase()}</strong>
+                  <p>{item.date} • {item.time}</p>
+                </div>
+                <span>{item.status}</span>
               </div>
-              <p>{item.caption.slice(0, 120)}...</p>
-              <span>{item.status}</span>
+              <p>{item.caption.slice(0, 180)}...</p>
+              <div className="buttonRow">
+                <button type="button" onClick={() => updateItemStatus(item.id, 'draft')}>Mark Draft</button>
+                <button type="button" onClick={() => updateItemStatus(item.id, 'posted')}>Mark Posted</button>
+                <button type="button" onClick={() => deleteItem(item.id)}>Hapus</button>
+              </div>
             </div>
           ))}
         </div>

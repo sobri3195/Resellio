@@ -13,6 +13,10 @@ body {
   color: #f4f6ff;
 }
 
+a {
+  color: #9dc1ff;
+}
+
 .container {
   width: min(1120px, 94vw);
   margin: 0 auto;
@@ -114,9 +118,23 @@ label {
   font-size: 0.9rem;
 }
 
+.buttonRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.calendarHeader {
+  display: grid;
+  grid-template-columns: 1fr minmax(150px, 230px);
+  gap: 0.8rem;
+  align-items: center;
+}
+
 .calendar {
   display: grid;
   gap: 0.7rem;
+  margin-top: 0.8rem;
 }
 
 .calendarItem {
@@ -128,13 +146,19 @@ label {
   background: rgba(22, 27, 52, 0.6);
 }
 
+.calendarTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .calendarItem p {
   margin: 0;
 }
 
 .calendarItem span {
-  justify-self: start;
-  font-size: 0.8rem;
+  align-self: start;
+  font-size: 0.75rem;
   color: #87ffd8;
   text-transform: uppercase;
 }
@@ -146,5 +170,9 @@ label {
 
   .card {
     padding: 0.85rem;
+  }
+
+  .calendarHeader {
+    grid-template-columns: 1fr;
   }
 }
