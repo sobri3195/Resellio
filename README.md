@@ -35,6 +35,11 @@ Dashboard tool importir/reseller UMKM tanpa backend tradisional, siap deploy ke 
    - Filter channel, update status (`draft/scheduled/posted`), dan hapus item.
    - Data tersimpan di browser (`localStorage`) tanpa database eksternal.
 
+7. **Meta Social Connection Status**
+   - Route serverless `app/api/meta/status` untuk schema status koneksi Facebook/Instagram.
+   - Jika `connected=false`, field koneksi diset `null/false`.
+   - Jika `connected=true`, response menyertakan `page_name` (jika ada), `page_id`, `ig_connected`, `scopes_ok`, dan `token_expired`.
+
 ## Jalankan Lokal
 
 ```bash
