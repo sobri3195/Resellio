@@ -1,0 +1,178 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background: radial-gradient(circle at top, #1f2b63 0%, #090b1a 45%, #06070f 100%);
+  color: #f4f6ff;
+}
+
+a {
+  color: #9dc1ff;
+}
+
+.container {
+  width: min(1120px, 94vw);
+  margin: 0 auto;
+  padding: 2rem 0 3.5rem;
+}
+
+.hero h1 {
+  margin-bottom: 0.4rem;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+}
+
+.hero p {
+  margin-top: 0;
+  opacity: 0.86;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.card {
+  background: rgba(14, 17, 37, 0.84);
+  border: 1px solid rgba(140, 160, 255, 0.22);
+  border-radius: 16px;
+  padding: 1rem;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(8, 11, 28, 0.3);
+}
+
+.stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.compact {
+  gap: 0.55rem;
+}
+
+input,
+textarea,
+select,
+button {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #3d447a;
+  background: #0f1530;
+  color: #f4f6ff;
+  padding: 0.62rem 0.7rem;
+  font: inherit;
+}
+
+button {
+  border: none;
+  background: linear-gradient(120deg, #4d7dff 0%, #8a4dff 100%);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.93rem;
+}
+
+.productPreview {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 0.8rem;
+  margin-top: 1rem;
+  align-items: center;
+}
+
+.productPreview img {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.error {
+  color: #ff8da1;
+}
+
+.priceResult {
+  margin-top: 1rem;
+  border-top: 1px dashed rgba(165, 176, 255, 0.35);
+  padding-top: 0.8rem;
+}
+
+.muted {
+  opacity: 0.72;
+  font-size: 0.9rem;
+}
+
+.buttonRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+}
+
+.calendarHeader {
+  display: grid;
+  grid-template-columns: 1fr minmax(150px, 230px);
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.calendar {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.8rem;
+}
+
+.calendarItem {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid rgba(147, 161, 255, 0.32);
+  border-radius: 12px;
+  padding: 0.7rem;
+  background: rgba(22, 27, 52, 0.6);
+}
+
+.calendarTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.calendarItem p {
+  margin: 0;
+}
+
+.calendarItem span {
+  align-self: start;
+  font-size: 0.75rem;
+  color: #87ffd8;
+  text-transform: uppercase;
+}
+
+@media (max-width: 640px) {
+  .container {
+    width: 92vw;
+  }
+
+  .card {
+    padding: 0.85rem;
+  }
+
+  .calendarHeader {
+    grid-template-columns: 1fr;
+  }
+}
