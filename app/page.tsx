@@ -23,6 +23,7 @@ type CalendarItem = {
 };
 
 type Tone = 'friendly' | 'urgent' | 'premium';
+type CalendarFilter = 'all' | 'instagram' | 'facebook';
 
 const STORAGE_CALENDAR_KEY = 'resellio-calendar-items-v2';
 const STORAGE_SETTINGS_KEY = 'resellio-user-settings-v2';
@@ -43,7 +44,8 @@ function buildCaption(niche: string, title: string, sellingPrice: number, tone: 
     friendly: {
       emoji: '✨🔥',
       opener: 'Siap bikin etalase toko kamu makin standout!',
-      cta: 'Klik link bio / DM sekarang, stok terbatas!'},
+      cta: 'Klik link bio / DM sekarang, stok terbatas!'
+    },
     urgent: {
       emoji: '⚡📦',
       opener: 'Flash deal import hari ini, jangan sampai kehabisan!',
@@ -77,6 +79,15 @@ ${theme.cta}
 ${mergedTags}`;
 }
 
+function safeParse<T>(value: string | null, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function HomePage() {
   const [link, setLink] = useState('');
   const [product, setProduct] = useState<ProductData | null>(null);
@@ -100,36 +111,32 @@ export default function HomePage() {
   const [channel, setChannel] = useState<'instagram' | 'facebook'>('instagram');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
-  const [calendarFilter, setCalendarFilter] = useState<'all' | 'instagram' | 'facebook'>('all');
+  const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>('all');
 
   useEffect(() => {
-    const savedItems = localStorage.getItem(STORAGE_CALENDAR_KEY);
-    const savedSettings = localStorage.getItem(STORAGE_SETTINGS_KEY);
+    const savedItems = safeParse<CalendarItem[]>(localStorage.getItem(STORAGE_CALENDAR_KEY), []);
+    const savedSettings = safeParse<{
+      markup: number;
+      shipping: number;
+      platformFee: number;
+      ads: number;
+      niche: string;
+      tone: Tone;
+      extraTagsInput: string;
+      webhookUrl: string;
+    } | null>(localStorage.getItem(STORAGE_SETTINGS_KEY), null);
 
-    if (savedItems) {
-      setItems(JSON.parse(savedItems) as CalendarItem[]);
-    }
+    setItems(savedItems);
 
     if (savedSettings) {
-      const parsed = JSON.parse(savedSettings) as {
-        markup: number;
-        shipping: number;
-        platformFee: number;
-        ads: number;
-        niche: string;
-        tone: Tone;
-        extraTagsInput: string;
-        webhookUrl: string;
-      };
-
-      setMarkup(parsed.markup ?? 25);
-      setShipping(parsed.shipping ?? 12000);
-      setPlatformFee(parsed.platformFee ?? 5000);
-      setAds(parsed.ads ?? 8000);
-      setNiche(parsed.niche ?? 'Fashion Wanita');
-      setTone(parsed.tone ?? 'friendly');
-      setExtraTagsInput(parsed.extraTagsInput ?? '');
-      setWebhookUrl(parsed.webhookUrl ?? '');
+      setMarkup(savedSettings.markup ?? 25);
+      setShipping(savedSettings.shipping ?? 12000);
+      setPlatformFee(savedSettings.platformFee ?? 5000);
+      setAds(savedSettings.ads ?? 8000);
+      setNiche(savedSettings.niche ?? 'Fashion Wanita');
+      setTone(savedSettings.tone ?? 'friendly');
+      setExtraTagsInput(savedSettings.extraTagsInput ?? '');
+      setWebhookUrl(savedSettings.webhookUrl ?? '');
     }
   }, []);
 
@@ -171,13 +178,13 @@ export default function HomePage() {
       });
 
       const data = (await response.json()) as ProductData | { error: string };
-
       if (!response.ok || 'error' in data) {
         throw new Error('error' in data ? data.error : 'Gagal mengambil metadata produk.');
       }
 
       setProduct(data);
       setCaption(buildCaption(niche, data.title, finalPrice || data.price, tone, extraHashtags));
+      setCaptionStatus('Metadata produk berhasil diambil.');
     } catch (error) {
       setGrabberError(error instanceof Error ? error.message : 'Terjadi kesalahan.');
     } finally {
@@ -193,16 +200,23 @@ export default function HomePage() {
 
   const handleCopyCaption = async () => {
     if (!caption) return;
-    await navigator.clipboard.writeText(caption);
-    setCaptionStatus('Caption berhasil disalin ke clipboard.');
+    try {
+      await navigator.clipboard.writeText(caption);
+      setCaptionStatus('Caption berhasil disalin ke clipboard.');
+    } catch {
+      setCaptionStatus('Gagal menyalin caption. Silakan copy manual dari textarea.');
+    }
   };
 
   const handleSchedule = async (event: FormEvent) => {
     event.preventDefault();
+
     if (!caption || !scheduleDate || !scheduleTime) {
       setScheduleStatus('Lengkapi caption dan jadwal posting terlebih dahulu.');
       return;
     }
+
+    const productUrl = product?.url ?? (link.trim() || null);
 
     const newItem: CalendarItem = {
       id: crypto.randomUUID(),
@@ -217,29 +231,29 @@ export default function HomePage() {
 
     setItems((prev) => [...prev, newItem].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
 
-    if (webhookUrl) {
-      try {
-        await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            caption,
-            channel,
-            scheduleAt: `${scheduleDate}T${scheduleTime}`,
-            image: product?.image ?? null,
-            productTitle: product?.title ?? null,
-            productUrl: product?.url ?? link.trim() || null,
-            source: product?.source ?? null
-          })
-        });
-        setScheduleStatus('Jadwal tersimpan dan payload sukses dikirim ke webhook/Meta relay.');
-      } catch {
-        setScheduleStatus('Jadwal tersimpan lokal. Pengiriman webhook gagal, cek URL endpoint.');
-      }
+    if (!webhookUrl) {
+      setScheduleStatus('Jadwal tersimpan di Content Calendar (localStorage).');
       return;
     }
 
-    setScheduleStatus('Jadwal tersimpan di Content Calendar (localStorage).');
+    try {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caption,
+          channel,
+          scheduleAt: `${scheduleDate}T${scheduleTime}`,
+          image: product?.image ?? null,
+          productTitle: product?.title ?? null,
+          productUrl,
+          source: product?.source ?? null
+        })
+      });
+      setScheduleStatus('Jadwal tersimpan dan payload sukses dikirim ke webhook/Meta relay.');
+    } catch {
+      setScheduleStatus('Jadwal tersimpan lokal. Pengiriman webhook gagal, cek URL endpoint.');
+    }
   };
 
   const updateItemStatus = (id: string, status: CalendarItem['status']) => {
@@ -273,7 +287,7 @@ export default function HomePage() {
           {grabberError ? <p className="error">{grabberError}</p> : null}
           {product ? (
             <div className="productPreview">
-              <img src={product.image} alt={product.title} />
+              <img src={product.image} alt={product.title} loading="lazy" />
               <div>
                 <strong>{product.title}</strong>
                 <p>Sumber: {product.source}</p>
@@ -287,10 +301,10 @@ export default function HomePage() {
         <article className="card">
           <h2>2) Smart Pricing Engine</h2>
           <div className="stack compact">
-            <label>Markup (%)<input type="number" value={markup} onChange={(event) => setMarkup(Number(event.target.value) || 0)} /></label>
-            <label>Biaya Shipping<input type="number" value={shipping} onChange={(event) => setShipping(Number(event.target.value) || 0)} /></label>
-            <label>Biaya Platform<input type="number" value={platformFee} onChange={(event) => setPlatformFee(Number(event.target.value) || 0)} /></label>
-            <label>Biaya Iklan<input type="number" value={ads} onChange={(event) => setAds(Number(event.target.value) || 0)} /></label>
+            <label>Markup (%)<input type="number" min={0} value={markup} onChange={(event) => setMarkup(Number(event.target.value) || 0)} /></label>
+            <label>Biaya Shipping<input type="number" min={0} value={shipping} onChange={(event) => setShipping(Number(event.target.value) || 0)} /></label>
+            <label>Biaya Platform<input type="number" min={0} value={platformFee} onChange={(event) => setPlatformFee(Number(event.target.value) || 0)} /></label>
+            <label>Biaya Iklan<input type="number" min={0} value={ads} onChange={(event) => setAds(Number(event.target.value) || 0)} /></label>
           </div>
           <div className="priceResult">
             <p>Base cost: <strong>{formatCurrency(baseCost)}</strong></p>
@@ -349,7 +363,7 @@ export default function HomePage() {
       <section className="card">
         <div className="calendarHeader">
           <h2>5) Content Calendar (localStorage)</h2>
-          <select value={calendarFilter} onChange={(event) => setCalendarFilter(event.target.value as 'all' | 'instagram' | 'facebook')}>
+          <select value={calendarFilter} onChange={(event) => setCalendarFilter(event.target.value as CalendarFilter)}>
             <option value="all">Semua channel</option>
             <option value="instagram">Instagram</option>
             <option value="facebook">Facebook</option>
@@ -367,7 +381,7 @@ export default function HomePage() {
                 </div>
                 <span>{item.status}</span>
               </div>
-              <p>{item.caption.slice(0, 180)}...</p>
+              <p>{item.caption.length > 180 ? `${item.caption.slice(0, 180)}...` : item.caption}</p>
               <div className="buttonRow">
                 <button type="button" onClick={() => updateItemStatus(item.id, 'draft')}>Mark Draft</button>
                 <button type="button" onClick={() => updateItemStatus(item.id, 'posted')}>Mark Posted</button>

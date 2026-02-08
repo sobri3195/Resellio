@@ -10,12 +10,15 @@ const decodeEntities = (input: string) =>
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>');
 
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const parseMeta = (html: string, keys: string[]) => {
   for (const key of keys) {
-    const propertyFirst = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i');
-    const contentFirst = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${key}["'][^>]*>`, 'i');
-
+    const escapedKey = escapeRegex(key);
+    const propertyFirst = new RegExp(`<meta[^>]+(?:property|name)=["']${escapedKey}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i');
+    const contentFirst = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${escapedKey}["'][^>]*>`, 'i');
     const match = html.match(propertyFirst) ?? html.match(contentFirst);
+
     if (match?.[1]) {
       return decodeEntities(match[1].trim());
     }
@@ -26,6 +29,7 @@ const parseMeta = (html: string, keys: string[]) => {
 const parseTitle = (html: string) => {
   const ogTitle = parseMeta(html, ['og:title', 'twitter:title']);
   if (ogTitle) return ogTitle;
+
   const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
   return decodeEntities(titleMatch?.[1]?.trim() ?? 'Produk Marketplace');
 };
@@ -82,6 +86,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Format URL tidak valid.' }, { status: 400 });
   }
 
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    return NextResponse.json({ error: 'Protokol URL tidak didukung.' }, { status: 400 });
+  }
+
   const hostname = parsedUrl.hostname.toLowerCase();
   if (!ALLOWED_MARKETS.some((market) => hostname.includes(market))) {
     return NextResponse.json({ error: 'Domain marketplace belum didukung.' }, { status: 400 });
@@ -99,6 +107,10 @@ export async function POST(request: NextRequest) {
       next: { revalidate: 3600 },
       signal: controller.signal
     });
+
+    if (!response.ok) {
+      return NextResponse.json(safeFallback(parsedUrl.toString()), { status: 200 });
+    }
 
     const html = await response.text();
 
