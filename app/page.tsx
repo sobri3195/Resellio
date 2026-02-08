@@ -9,6 +9,8 @@ type ProductData = {
   source: string;
   currency: string;
   url: string;
+  niche?: string;
+  hashtags?: string[];
 };
 
 type CalendarItem = {
@@ -183,8 +185,14 @@ export default function HomePage() {
       }
 
       setProduct(data);
-      setCaption(buildCaption(niche, data.title, finalPrice || data.price, tone, extraHashtags));
-      setCaptionStatus('Metadata produk berhasil diambil.');
+
+      if (data.niche) setNiche(data.niche);
+      if (data.hashtags?.length) setExtraTagsInput(data.hashtags.join(', '));
+
+      const generatedNiche = data.niche || niche;
+      const generatedTags = data.hashtags?.length ? data.hashtags : extraHashtags;
+      setCaption(buildCaption(generatedNiche, data.title, finalPrice || data.price, tone, generatedTags));
+      setCaptionStatus('Metadata produk berhasil diambil, niche & hashtag terisi otomatis.');
     } catch (error) {
       setGrabberError(error instanceof Error ? error.message : 'Terjadi kesalahan.');
     } finally {
