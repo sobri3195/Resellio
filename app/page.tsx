@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 type ProductData = {
   title: string;
@@ -26,6 +26,8 @@ type CalendarItem = {
 
 type Tone = 'friendly' | 'urgent' | 'premium';
 type CalendarFilter = 'all' | 'instagram' | 'facebook';
+type CaptionTemplate = 'softsell' | 'hardsell' | 'storytelling';
+type DayPart = 'pagi' | 'siang' | 'malam';
 
 const STORAGE_CALENDAR_KEY = 'resellio-calendar-items-v2';
 const STORAGE_SETTINGS_KEY = 'resellio-user-settings-v2';
@@ -41,7 +43,22 @@ function normalizeHashtag(value: string) {
     .replace(/\s+/g, '');
 }
 
-function buildCaption(niche: string, title: string, sellingPrice: number, tone: Tone, extraHashtags: string[]) {
+function applyTemplate(template: CaptionTemplate, text: string) {
+  if (template === 'hardsell') return `🚨 PROMO TERBATAS 🚨\n${text}\n\n#buruancheckout`;
+  if (template === 'storytelling') {
+    return `Awalnya banyak reseller bingung cari produk yang repeat order.\n\n${text}\n\nYuk jadikan produk ini andalan etalase kamu.`;
+  }
+  return text;
+}
+
+function buildCaption(
+  niche: string,
+  title: string,
+  sellingPrice: number,
+  tone: Tone,
+  extraHashtags: string[],
+  template: CaptionTemplate
+) {
   const styles: Record<Tone, { emoji: string; cta: string; opener: string }> = {
     friendly: {
       emoji: '✨🔥',
@@ -67,7 +84,7 @@ function buildCaption(niche: string, title: string, sellingPrice: number, tone: 
 
   const theme = styles[tone];
 
-  return `${theme.emoji} ${title}
+  const baseCaption = `${theme.emoji} ${title}
 
 ${theme.opener}
 Harga rekomendasi jual mulai ${formatCurrency(sellingPrice)}.
@@ -79,6 +96,8 @@ Harga rekomendasi jual mulai ${formatCurrency(sellingPrice)}.
 ${theme.cta}
 
 ${mergedTags}`;
+
+  return applyTemplate(template, baseCaption);
 }
 
 function safeParse<T>(value: string | null, fallback: T): T {
@@ -90,6 +109,19 @@ function safeParse<T>(value: string | null, fallback: T): T {
   }
 }
 
+const postingTips: Record<'instagram' | 'facebook', Record<DayPart, string>> = {
+  instagram: {
+    pagi: '07:00 - 09:00 (konten edukasi + teaser produk)',
+    siang: '12:00 - 13:30 (konten promo singkat)',
+    malam: '19:00 - 21:00 (waktu konversi tertinggi)'
+  },
+  facebook: {
+    pagi: '08:00 - 10:00 (konten komunitas)',
+    siang: '13:00 - 14:00 (promo + CTA WhatsApp)',
+    malam: '19:30 - 21:30 (posting katalog + live reminder)'
+  }
+};
+
 export default function HomePage() {
   const [link, setLink] = useState('');
   const [product, setProduct] = useState<ProductData | null>(null);
@@ -100,9 +132,12 @@ export default function HomePage() {
   const [shipping, setShipping] = useState(12000);
   const [platformFee, setPlatformFee] = useState(5000);
   const [ads, setAds] = useState(8000);
+  const [targetProfit, setTargetProfit] = useState(2000000);
+  const [psychologicalPricing, setPsychologicalPricing] = useState(true);
 
   const [niche, setNiche] = useState('Fashion Wanita');
   const [tone, setTone] = useState<Tone>('friendly');
+  const [template, setTemplate] = useState<CaptionTemplate>('softsell');
   const [extraTagsInput, setExtraTagsInput] = useState('');
   const [caption, setCaption] = useState('');
   const [captionStatus, setCaptionStatus] = useState('');
@@ -111,9 +146,12 @@ export default function HomePage() {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [channel, setChannel] = useState<'instagram' | 'facebook'>('instagram');
+  const [dayPart, setDayPart] = useState<DayPart>('malam');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>('all');
+  const [calendarSearch, setCalendarSearch] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const savedItems = safeParse<CalendarItem[]>(localStorage.getItem(STORAGE_CALENDAR_KEY), []);
@@ -124,8 +162,12 @@ export default function HomePage() {
       ads: number;
       niche: string;
       tone: Tone;
+      template: CaptionTemplate;
       extraTagsInput: string;
       webhookUrl: string;
+      targetProfit: number;
+      psychologicalPricing: boolean;
+      dayPart: DayPart;
     } | null>(localStorage.getItem(STORAGE_SETTINGS_KEY), null);
 
     setItems(savedItems);
@@ -137,8 +179,12 @@ export default function HomePage() {
       setAds(savedSettings.ads ?? 8000);
       setNiche(savedSettings.niche ?? 'Fashion Wanita');
       setTone(savedSettings.tone ?? 'friendly');
+      setTemplate(savedSettings.template ?? 'softsell');
       setExtraTagsInput(savedSettings.extraTagsInput ?? '');
       setWebhookUrl(savedSettings.webhookUrl ?? '');
+      setTargetProfit(savedSettings.targetProfit ?? 2000000);
+      setPsychologicalPricing(savedSettings.psychologicalPricing ?? true);
+      setDayPart(savedSettings.dayPart ?? 'malam');
     }
   }, []);
 
@@ -149,21 +195,58 @@ export default function HomePage() {
   useEffect(() => {
     localStorage.setItem(
       STORAGE_SETTINGS_KEY,
-      JSON.stringify({ markup, shipping, platformFee, ads, niche, tone, extraTagsInput, webhookUrl })
+      JSON.stringify({
+        markup,
+        shipping,
+        platformFee,
+        ads,
+        niche,
+        tone,
+        template,
+        extraTagsInput,
+        webhookUrl,
+        targetProfit,
+        psychologicalPricing,
+        dayPart
+      })
     );
-  }, [ads, extraTagsInput, markup, niche, platformFee, shipping, tone, webhookUrl]);
+  }, [ads, dayPart, extraTagsInput, markup, niche, platformFee, psychologicalPricing, shipping, targetProfit, tone, template, webhookUrl]);
 
   const baseCost = product?.price ?? 0;
   const marginValue = useMemo(() => (baseCost * markup) / 100, [baseCost, markup]);
-  const finalPrice = useMemo(() => baseCost + marginValue + shipping + platformFee + ads, [ads, baseCost, marginValue, platformFee, shipping]);
+  const rawPrice = useMemo(() => baseCost + marginValue + shipping + platformFee + ads, [ads, baseCost, marginValue, platformFee, shipping]);
+  const finalPrice = useMemo(() => {
+    if (!psychologicalPricing) return rawPrice;
+    if (rawPrice <= 1000) return rawPrice;
+    const rounded = Math.floor(rawPrice / 1000) * 1000;
+    return rounded + 900;
+  }, [psychologicalPricing, rawPrice]);
   const estimatedProfit = useMemo(() => finalPrice - baseCost - shipping - platformFee - ads, [ads, baseCost, finalPrice, platformFee, shipping]);
+  const breakEvenUnits = useMemo(() => {
+    if (estimatedProfit <= 0) return 0;
+    return Math.ceil(targetProfit / estimatedProfit);
+  }, [estimatedProfit, targetProfit]);
 
   const filteredItems = useMemo(
-    () => items.filter((item) => (calendarFilter === 'all' ? true : item.channel === calendarFilter)),
-    [calendarFilter, items]
+    () =>
+      items.filter((item) => {
+        const channelMatch = calendarFilter === 'all' ? true : item.channel === calendarFilter;
+        const keyword = calendarSearch.toLowerCase().trim();
+        const text = `${item.caption} ${item.productTitle ?? ''}`.toLowerCase();
+        return channelMatch && (keyword ? text.includes(keyword) : true);
+      }),
+    [calendarFilter, calendarSearch, items]
   );
 
   const extraHashtags = useMemo(() => extraTagsInput.split(',').map((value) => value.trim()).filter(Boolean), [extraTagsInput]);
+  const hashtagCount = useMemo(() => (caption.match(/#[\p{L}\p{N}_]+/gu) ?? []).length, [caption]);
+
+  const channelStats = useMemo(() => {
+    const instagramCount = items.filter((item) => item.channel === 'instagram').length;
+    const facebookCount = items.filter((item) => item.channel === 'facebook').length;
+    const posted = items.filter((item) => item.status === 'posted').length;
+    return { instagramCount, facebookCount, posted };
+  }, [items]);
 
   const handleGrabProduct = async (event: FormEvent) => {
     event.preventDefault();
@@ -191,7 +274,7 @@ export default function HomePage() {
 
       const generatedNiche = data.niche || niche;
       const generatedTags = data.hashtags?.length ? data.hashtags : extraHashtags;
-      setCaption(buildCaption(generatedNiche, data.title, finalPrice || data.price, tone, generatedTags));
+      setCaption(buildCaption(generatedNiche, data.title, finalPrice || data.price, tone, generatedTags, template));
       setCaptionStatus('Metadata produk berhasil diambil, niche & hashtag terisi otomatis.');
     } catch (error) {
       setGrabberError(error instanceof Error ? error.message : 'Terjadi kesalahan.');
@@ -202,7 +285,7 @@ export default function HomePage() {
 
   const handleGenerateCaption = () => {
     if (!product) return;
-    setCaption(buildCaption(niche, product.title, finalPrice || product.price, tone, extraHashtags));
+    setCaption(buildCaption(niche, product.title, finalPrice || product.price, tone, extraHashtags, template));
     setCaptionStatus('Caption berhasil diperbarui berdasarkan pricing terbaru.');
   };
 
@@ -272,12 +355,68 @@ export default function HomePage() {
     setItems((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const duplicateTomorrow = (item: CalendarItem) => {
+    const sourceDate = new Date(`${item.date}T${item.time}`);
+    sourceDate.setDate(sourceDate.getDate() + 1);
+    const nextDate = sourceDate.toISOString().slice(0, 10);
+    const nextTime = sourceDate.toTimeString().slice(0, 5);
+
+    const cloned: CalendarItem = {
+      ...item,
+      id: crypto.randomUUID(),
+      date: nextDate,
+      time: nextTime,
+      status: 'draft'
+    };
+
+    setItems((prev) => [...prev, cloned].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+  };
+
+  const exportCalendar = () => {
+    const blob = new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = `resellio-calendar-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(href);
+  };
+
+  const handleImportCalendar = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const imported = safeParse<CalendarItem[]>(String(reader.result), []);
+        if (!Array.isArray(imported) || !imported.length) {
+          setScheduleStatus('File import tidak valid atau kosong.');
+          return;
+        }
+        setItems(imported);
+        setScheduleStatus('Calendar berhasil diimport dari file JSON.');
+      } catch {
+        setScheduleStatus('Gagal membaca file import.');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   return (
     <main className="container">
       <header className="hero">
         <h1>Resellio Dashboard</h1>
         <p>Tool produktivitas importir & reseller UMKM berbasis Next.js: grab link produk, pricing engine, caption AI, scheduling, dan calendar visual.</p>
       </header>
+
+      <section className="statsGrid">
+        <article className="statCard"><p>Total jadwal</p><strong>{items.length}</strong></article>
+        <article className="statCard"><p>Instagram plan</p><strong>{channelStats.instagramCount}</strong></article>
+        <article className="statCard"><p>Facebook plan</p><strong>{channelStats.facebookCount}</strong></article>
+        <article className="statCard"><p>Sudah posted</p><strong>{channelStats.posted}</strong></article>
+      </section>
 
       <section className="grid">
         <article className="card">
@@ -307,23 +446,32 @@ export default function HomePage() {
         </article>
 
         <article className="card">
-          <h2>2) Smart Pricing Engine</h2>
+          <h2>2) Smart Pricing Engine + 4 fitur baru</h2>
           <div className="stack compact">
             <label>Markup (%)<input type="number" min={0} value={markup} onChange={(event) => setMarkup(Number(event.target.value) || 0)} /></label>
+            <div className="chipRow">
+              {[20, 30, 40].map((value) => (
+                <button key={value} type="button" className="chip" onClick={() => setMarkup(value)}>Preset {value}%</button>
+              ))}
+            </div>
             <label>Biaya Shipping<input type="number" min={0} value={shipping} onChange={(event) => setShipping(Number(event.target.value) || 0)} /></label>
             <label>Biaya Platform<input type="number" min={0} value={platformFee} onChange={(event) => setPlatformFee(Number(event.target.value) || 0)} /></label>
             <label>Biaya Iklan<input type="number" min={0} value={ads} onChange={(event) => setAds(Number(event.target.value) || 0)} /></label>
+            <label>Target profit bulanan<input type="number" min={0} value={targetProfit} onChange={(event) => setTargetProfit(Number(event.target.value) || 0)} /></label>
+            <label className="inlineLabel"><input type="checkbox" checked={psychologicalPricing} onChange={(event) => setPsychologicalPricing(event.target.checked)} /> Aktifkan psychological pricing (akhiran 900)</label>
           </div>
           <div className="priceResult">
             <p>Base cost: <strong>{formatCurrency(baseCost)}</strong></p>
             <p>Margin ({markup}%): <strong>{formatCurrency(marginValue)}</strong></p>
-            <p>Estimasi profit bersih: <strong>{formatCurrency(estimatedProfit)}</strong></p>
+            <p>Harga raw: <strong>{formatCurrency(rawPrice)}</strong></p>
+            <p>Estimasi profit bersih/unit: <strong>{formatCurrency(estimatedProfit)}</strong></p>
             <p>Harga jual rekomendasi: <strong>{formatCurrency(finalPrice)}</strong></p>
+            <p>Break-even target profit: <strong>{breakEvenUnits} unit</strong></p>
           </div>
         </article>
 
         <article className="card">
-          <h2>3) AI Caption Generator</h2>
+          <h2>3) AI Caption Generator + 3 fitur baru</h2>
           <div className="stack compact">
             <label>Niche produk<input value={niche} onChange={(event) => setNiche(event.target.value)} /></label>
             <label>Hashtag tambahan (pisahkan dengan koma)
@@ -337,17 +485,29 @@ export default function HomePage() {
                 <option value="premium">Premium</option>
               </select>
             </label>
+            <label>
+              Template caption
+              <select value={template} onChange={(event) => setTemplate(event.target.value as CaptionTemplate)}>
+                <option value="softsell">Soft Sell</option>
+                <option value="hardsell">Hard Sell</option>
+                <option value="storytelling">Storytelling</option>
+              </select>
+            </label>
             <div className="buttonRow">
               <button onClick={handleGenerateCaption} type="button" disabled={!product}>Generate Caption</button>
               <button onClick={handleCopyCaption} type="button" disabled={!caption}>Copy Caption</button>
             </div>
             <textarea rows={8} value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Caption AI akan muncul di sini..." />
+            <div className="metaRow">
+              <span>Jumlah karakter: {caption.length}</span>
+              <span>Jumlah hashtag: {hashtagCount}</span>
+            </div>
             {captionStatus ? <p className="muted">{captionStatus}</p> : null}
           </div>
         </article>
 
         <article className="card">
-          <h2>4) Instagram Auto Posting & Scheduling</h2>
+          <h2>4) Instagram Auto Posting & Scheduling + rekomendasi jam</h2>
           <form onSubmit={handleSchedule} className="stack compact">
             <label>Tanggal posting<input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} /></label>
             <label>Jam posting<input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} /></label>
@@ -358,6 +518,15 @@ export default function HomePage() {
                 <option value="facebook">Facebook Page</option>
               </select>
             </label>
+            <label>
+              Slot waktu audiens
+              <select value={dayPart} onChange={(event) => setDayPart(event.target.value as DayPart)}>
+                <option value="pagi">Pagi</option>
+                <option value="siang">Siang</option>
+                <option value="malam">Malam</option>
+              </select>
+            </label>
+            <p className="muted">Rekomendasi: <strong>{postingTips[channel][dayPart]}</strong></p>
             <label>Webhook/Meta Endpoint (opsional)
               <input type="url" placeholder="https://example.com/meta-webhook" value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} />
             </label>
@@ -370,12 +539,19 @@ export default function HomePage() {
 
       <section className="card">
         <div className="calendarHeader">
-          <h2>5) Content Calendar (localStorage)</h2>
+          <h2>5) Content Calendar + 3 fitur baru</h2>
           <select value={calendarFilter} onChange={(event) => setCalendarFilter(event.target.value as CalendarFilter)}>
             <option value="all">Semua channel</option>
             <option value="instagram">Instagram</option>
             <option value="facebook">Facebook</option>
           </select>
+        </div>
+
+        <div className="buttonRow">
+          <input placeholder="Cari caption / judul produk..." value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} />
+          <button type="button" onClick={exportCalendar}>Export JSON</button>
+          <button type="button" onClick={() => fileInputRef.current?.click()}>Import JSON</button>
+          <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportCalendar} style={{ display: 'none' }} />
         </div>
 
         <div className="calendar">
@@ -393,6 +569,7 @@ export default function HomePage() {
               <div className="buttonRow">
                 <button type="button" onClick={() => updateItemStatus(item.id, 'draft')}>Mark Draft</button>
                 <button type="button" onClick={() => updateItemStatus(item.id, 'posted')}>Mark Posted</button>
+                <button type="button" onClick={() => duplicateTomorrow(item)}>Duplikat +1 hari</button>
                 <button type="button" onClick={() => deleteItem(item.id)}>Hapus</button>
               </div>
             </div>
