@@ -33,6 +33,23 @@ a {
   opacity: 0.86;
 }
 
+
+.heroBrand {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.heroBrand h1 {
+  margin: 0;
+}
+
+.heroLogo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

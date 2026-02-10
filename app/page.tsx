@@ -494,7 +494,10 @@ export default function HomePage() {
   return (
     <main className="container">
       <header className="hero">
-        <h1>Resellio Dashboard</h1>
+        <div className="heroBrand">
+          <img src="/logo.svg" alt="Logo Resellio" className="heroLogo" />
+          <h1>Resellio Dashboard</h1>
+        </div>
         <p>Tool produktivitas importir & reseller UMKM berbasis Next.js: grab link produk, pricing engine, caption AI, scheduling, dan calendar visual.</p>
       </header>
 
