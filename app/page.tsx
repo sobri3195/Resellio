@@ -24,6 +24,25 @@ type CalendarItem = {
   status: 'draft' | 'scheduled' | 'posted';
 };
 
+
+type MetaConnectionStatus = {
+  connected: boolean;
+  facebook: {
+    page_id: string | null;
+    page_name: string | null;
+  };
+  instagram: {
+    ig_user_id: string | null;
+    connected: boolean;
+  };
+  auth: {
+    scopes_ok: boolean;
+    token_expired: boolean;
+    expires_at: string | null;
+  };
+  notes: string[];
+};
+
 type Tone = 'friendly' | 'urgent' | 'premium';
 type CalendarFilter = 'all' | 'instagram' | 'facebook';
 type CaptionTemplate = 'softsell' | 'hardsell' | 'storytelling';
@@ -149,6 +168,9 @@ export default function HomePage() {
   const [dayPart, setDayPart] = useState<DayPart>('malam');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [scheduleStatus, setScheduleStatus] = useState('');
+  const [metaStatus, setMetaStatus] = useState<MetaConnectionStatus | null>(null);
+  const [metaMessage, setMetaMessage] = useState('');
+  const [metaLoading, setMetaLoading] = useState(false);
   const [calendarFilter, setCalendarFilter] = useState<CalendarFilter>('all');
   const [calendarSearch, setCalendarSearch] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -191,6 +213,34 @@ export default function HomePage() {
   useEffect(() => {
     localStorage.setItem(STORAGE_CALENDAR_KEY, JSON.stringify(items));
   }, [items]);
+
+  useEffect(() => {
+    const syncMetaStatus = async () => {
+      try {
+        const response = await fetch('/api/meta/status', { cache: 'no-store' });
+        const data = (await response.json()) as MetaConnectionStatus;
+        setMetaStatus(data);
+      } catch {
+        setMetaMessage('Gagal membaca status koneksi Meta.');
+      }
+    };
+
+    const params = new URLSearchParams(window.location.search);
+    const meta = params.get('meta');
+    const metaError = params.get('meta_error');
+
+    if (meta === 'connected') setMetaMessage('Akun Facebook & Instagram berhasil terhubung.');
+    if (meta === 'connected_without_ig') setMetaMessage('Facebook terhubung, tapi Page belum tersambung ke Instagram Business.');
+    if (metaError) setMetaMessage(`Koneksi Meta gagal: ${metaError}.`);
+
+    if (meta || metaError) {
+      const cleanUrl = `${window.location.pathname}`;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+
+    syncMetaStatus();
+  }, []);
+
 
   useEffect(() => {
     localStorage.setItem(
@@ -382,6 +432,43 @@ export default function HomePage() {
     URL.revokeObjectURL(href);
   };
 
+
+  const handleConnectMeta = async () => {
+    setMetaLoading(true);
+    setMetaMessage('');
+
+    try {
+      const response = await fetch('/api/meta/connect', { cache: 'no-store' });
+      const data = (await response.json()) as { oauth_url?: string; error?: string };
+
+      if (!response.ok || !data.oauth_url) {
+        throw new Error(data.error ?? 'Gagal memulai koneksi Meta.');
+      }
+
+      window.location.href = data.oauth_url;
+    } catch (error) {
+      setMetaMessage(error instanceof Error ? error.message : 'Terjadi kesalahan koneksi Meta.');
+      setMetaLoading(false);
+    }
+  };
+
+  const handleDisconnectMeta = async () => {
+    setMetaLoading(true);
+    setMetaMessage('');
+
+    try {
+      await fetch('/api/meta/disconnect', { method: 'POST' });
+      const response = await fetch('/api/meta/status', { cache: 'no-store' });
+      const data = (await response.json()) as MetaConnectionStatus;
+      setMetaStatus(data);
+      setMetaMessage('Koneksi Meta berhasil diputus.');
+    } catch {
+      setMetaMessage('Gagal memutus koneksi Meta.');
+    } finally {
+      setMetaLoading(false);
+    }
+  };
+
   const handleImportCalendar = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -416,6 +503,26 @@ export default function HomePage() {
         <article className="statCard"><p>Instagram plan</p><strong>{channelStats.instagramCount}</strong></article>
         <article className="statCard"><p>Facebook plan</p><strong>{channelStats.facebookCount}</strong></article>
         <article className="statCard"><p>Sudah posted</p><strong>{channelStats.posted}</strong></article>
+      </section>
+
+      <section className="card">
+        <div className="calendarTop">
+          <div>
+            <h2>Meta Social Connect (Facebook Page + Instagram)</h2>
+            <p className="muted">Status: <strong>{metaStatus?.connected ? 'Connected' : 'Not connected'}</strong></p>
+          </div>
+        </div>
+        {metaStatus?.connected ? (
+          <div className="stack compact">
+            <p className="muted">Facebook Page: <strong>{metaStatus.facebook.page_name ?? '-'}</strong> ({metaStatus.facebook.page_id ?? '-'})</p>
+            <p className="muted">Instagram Business ID: <strong>{metaStatus.instagram.ig_user_id ?? 'Belum terhubung'}</strong></p>
+            <p className="muted">Scope valid: <strong>{metaStatus.auth.scopes_ok ? 'Ya' : 'Tidak'}</strong> · Token expired: <strong>{metaStatus.auth.token_expired ? 'Ya' : 'Tidak'}</strong></p>
+            <button type="button" onClick={handleDisconnectMeta} disabled={metaLoading}>Disconnect</button>
+          </div>
+        ) : (
+          <button type="button" onClick={handleConnectMeta} disabled={metaLoading}>{metaLoading ? 'Menyambungkan...' : 'Connect Facebook & Instagram'}</button>
+        )}
+        {metaMessage ? <p className="muted">{metaMessage}</p> : null}
       </section>
 
       <section className="grid">

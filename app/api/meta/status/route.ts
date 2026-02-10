@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+
+import { readMetaConnection } from '../_lib';
 
 type MetaStatusResponse = {
   connected: boolean;
@@ -36,39 +38,30 @@ const buildDisconnectedStatus = (): MetaStatusResponse => ({
   notes: ['facebook_not_connected']
 });
 
-const buildConnectedStatus = (request: NextRequest): MetaStatusResponse => {
-  const pageId = request.nextUrl.searchParams.get('page_id');
-  const pageName = request.nextUrl.searchParams.get('page_name');
-  const igUserId = request.nextUrl.searchParams.get('ig_user_id');
-  const scopesOk = request.nextUrl.searchParams.get('scopes_ok') !== 'false';
-  const tokenExpired = request.nextUrl.searchParams.get('token_expired') === 'true';
-  const expiresAt = request.nextUrl.searchParams.get('expires_at');
-
-  return {
-    connected: true,
-    facebook: {
-      page_id: pageId,
-      page_name: pageName
-    },
-    instagram: {
-      ig_user_id: igUserId,
-      connected: Boolean(igUserId)
-    },
-    auth: {
-      scopes_ok: scopesOk,
-      token_expired: tokenExpired,
-      expires_at: expiresAt
-    },
-    notes: []
-  };
-};
-
-export async function GET(request: NextRequest) {
-  const connected = request.nextUrl.searchParams.get('connected') === 'true';
-
-  if (!connected) {
+export async function GET() {
+  const connection = readMetaConnection();
+  if (!connection) {
     return NextResponse.json(buildDisconnectedStatus());
   }
 
-  return NextResponse.json(buildConnectedStatus(request));
+  const requiredScopes = ['pages_show_list', 'pages_manage_posts', 'instagram_basic', 'instagram_content_publish'];
+  const scopesOk = requiredScopes.every((scope) => connection.scopes_granted.includes(scope));
+
+  return NextResponse.json({
+    connected: true,
+    facebook: {
+      page_id: connection.page_id,
+      page_name: connection.page_name
+    },
+    instagram: {
+      ig_user_id: connection.ig_user_id,
+      connected: Boolean(connection.ig_user_id)
+    },
+    auth: {
+      scopes_ok: scopesOk,
+      token_expired: connection.token_expired,
+      expires_at: connection.expires_at
+    },
+    notes: connection.ig_user_id ? [] : ['instagram_not_connected_to_page']
+  } satisfies MetaStatusResponse);
 }

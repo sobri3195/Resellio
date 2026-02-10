@@ -35,10 +35,24 @@ Dashboard tool importir/reseller UMKM tanpa backend tradisional, siap deploy ke 
    - Filter channel, update status (`draft/scheduled/posted`), dan hapus item.
    - Data tersimpan di browser (`localStorage`) tanpa database eksternal.
 
-7. **Meta Social Connection Status**
-   - Route serverless `app/api/meta/status` untuk schema status koneksi Facebook/Instagram.
-   - Jika `connected=false`, field koneksi diset `null/false`.
-   - Jika `connected=true`, response menyertakan `page_name` (jika ada), `page_id`, `ig_connected`, `scopes_ok`, dan `token_expired`.
+7. **Meta Social Connection Status + OAuth Connect**
+   - Tombol **Connect Facebook & Instagram** di dashboard memulai OAuth ke Meta.
+   - Callback OAuth menyimpan koneksi Page + Instagram Business (cookie HttpOnly server-side).
+   - Route serverless: `app/api/meta/connect`, `app/api/meta/callback`, `app/api/meta/status`, dan `app/api/meta/disconnect`.
+   - Status menampilkan `page_name`, `page_id`, `ig_user_id`, `scopes_ok`, dan `token_expired`.
+
+## Environment Variables (Meta OAuth)
+
+Tambahkan variabel berikut di `.env.local` saat ingin koneksi akun Meta:
+
+```bash
+META_APP_ID=your_meta_app_id
+META_APP_SECRET=your_meta_app_secret
+# opsional, default: http://localhost:3000/api/meta/callback
+META_REDIRECT_URI=http://localhost:3000/api/meta/callback
+```
+
+Pastikan URI callback di atas juga terdaftar di pengaturan aplikasi Meta Developers.
 
 ## Jalankan Lokal
 
