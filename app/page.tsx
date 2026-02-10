@@ -1,6 +1,7 @@
 'use client';
 
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 
 type ProductData = {
   title: string;
@@ -495,7 +496,7 @@ export default function HomePage() {
     <main className="container">
       <header className="hero">
         <div className="heroBrand">
-          <img src="/logo.svg" alt="Logo Resellio" className="heroLogo" />
+          <Image src="/logo.svg" alt="Logo Resellio" className="heroLogo" width={56} height={56} priority />
           <h1>Resellio Dashboard</h1>
         </div>
         <p>Tool produktivitas importir & reseller UMKM berbasis Next.js: grab link produk, pricing engine, caption AI, scheduling, dan calendar visual.</p>
@@ -544,7 +545,7 @@ export default function HomePage() {
           {grabberError ? <p className="error">{grabberError}</p> : null}
           {product ? (
             <div className="productPreview">
-              <img src={product.image} alt={product.title} loading="lazy" />
+              <Image src={product.image} alt={product.title} loading="lazy" width={72} height={72} />
               <div>
                 <strong>{product.title}</strong>
                 <p>Sumber: {product.source}</p>
