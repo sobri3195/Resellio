@@ -43,16 +43,17 @@ Dashboard tool importir/reseller UMKM tanpa backend tradisional, siap deploy ke 
 
 ## Environment Variables (Meta OAuth)
 
-Tambahkan variabel berikut di `.env.local` saat ingin koneksi akun Meta:
+Tambahkan variabel berikut di `.env.local` saat ingin koneksi akun Meta (bisa copy dari `.env.example`):
 
 ```bash
-META_APP_ID=your_meta_app_id
-META_APP_SECRET=your_meta_app_secret
-# opsional, default: http://localhost:3000/api/meta/callback
-META_REDIRECT_URI=http://localhost:3000/api/meta/callback
+META_APP_ID=1597456858121010
+META_APP_SECRET=79441f5835de0a42687cd813fad30ae3
+# gunakan URI callback penuh (WAJIB berakhiran /api/meta/callback)
+META_REDIRECT_URI=https://resellio-nine.vercel.app/api/meta/callback
 ```
 
 Pastikan URI callback di atas juga terdaftar di pengaturan aplikasi Meta Developers.
+Jika Anda mengisi domain saja (contoh `https://resellio-nine.vercel.app`), sistem akan menormalkan ke `/api/meta/callback`.
 
 ## Jalankan Lokal
 

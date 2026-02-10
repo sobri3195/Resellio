@@ -4,6 +4,24 @@ export const META_STATE_COOKIE = 'resellio_meta_oauth_state';
 export const META_CONNECTION_COOKIE = 'resellio_meta_connection';
 const STATE_TTL_SECONDS = 60 * 10;
 const CONNECTION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const DEFAULT_META_APP_ID = '1597456858121010';
+const DEFAULT_META_APP_SECRET = '79441f5835de0a42687cd813fad30ae3';
+const DEFAULT_META_REDIRECT_URI = 'https://resellio-nine.vercel.app/api/meta/callback';
+
+function normalizeMetaRedirectUri(redirectUri: string, origin: string) {
+  const fallback = `${origin}/api/meta/callback`;
+
+  try {
+    const parsed = new URL(redirectUri);
+    if (parsed.pathname === '/' || parsed.pathname === '') {
+      parsed.pathname = '/api/meta/callback';
+    }
+
+    return parsed.toString();
+  } catch {
+    return fallback;
+  }
+}
 
 export type MetaConnection = {
   connected: true;
@@ -18,13 +36,10 @@ export type MetaConnection = {
 };
 
 export function getMetaConfig(origin: string) {
-  const appId = process.env.META_APP_ID;
-  const appSecret = process.env.META_APP_SECRET;
-  const redirectUri = process.env.META_REDIRECT_URI ?? `${origin}/api/meta/callback`;
-
-  if (!appId || !appSecret) {
-    throw new Error('META_APP_ID atau META_APP_SECRET belum di-set.');
-  }
+  const appId = process.env.META_APP_ID ?? DEFAULT_META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET ?? DEFAULT_META_APP_SECRET;
+  const rawRedirectUri = process.env.META_REDIRECT_URI ?? DEFAULT_META_REDIRECT_URI;
+  const redirectUri = normalizeMetaRedirectUri(rawRedirectUri, origin);
 
   return { appId, appSecret, redirectUri };
 }
