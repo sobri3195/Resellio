@@ -49,6 +49,7 @@ type CalendarFilter = 'all' | 'instagram' | 'facebook';
 type CaptionTemplate = 'softsell' | 'hardsell' | 'storytelling';
 type DayPart = 'pagi' | 'siang' | 'malam';
 type CalendarImportItem = Partial<CalendarItem>;
+type CalendarImportPayload = CalendarImportItem[] | { items?: CalendarImportItem[] };
 
 const STORAGE_CALENDAR_KEY = 'resellio-calendar-items-v2';
 const STORAGE_SETTINGS_KEY = 'resellio-user-settings-v2';
@@ -152,11 +153,15 @@ function sanitizeCalendarItem(rawItem: CalendarImportItem): CalendarItem | null 
     ? (rawItem.status as CalendarItem['status'])
     : 'draft';
 
+  const date = rawItem.date as string;
+  const time = (rawItem.time as string).slice(0, 5);
+  const caption = (rawItem.caption as string).trim();
+
   return {
     id: typeof rawItem.id === 'string' && rawItem.id.trim() ? rawItem.id : crypto.randomUUID(),
-    date: rawItem.date,
-    time: rawItem.time.slice(0, 5),
-    caption: rawItem.caption.trim(),
+    date,
+    time,
+    caption,
     channel,
     image: typeof rawItem.image === 'string' ? rawItem.image : undefined,
     productTitle: typeof rawItem.productTitle === 'string' ? rawItem.productTitle : undefined,
@@ -405,6 +410,14 @@ export default function HomePage() {
     }
 
     const productUrl = product?.url ?? (link.trim() || null);
+    const hasSameSlot = items.some(
+      (item) => item.channel === channel && item.date === scheduleDate && item.time === scheduleTime
+    );
+
+    if (hasSameSlot) {
+      setScheduleStatus('Jadwal bentrok: channel, tanggal, dan jam yang sama sudah ada di calendar.');
+      return;
+    }
 
     const newItem: CalendarItem = {
       id: crypto.randomUUID(),
@@ -527,7 +540,8 @@ export default function HomePage() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const imported = safeParse<CalendarImportItem[]>(String(reader.result), []);
+        const parsed = safeParse<CalendarImportPayload>(String(reader.result), []);
+        const imported = Array.isArray(parsed) ? parsed : parsed?.items ?? [];
         const validItems = imported.map(sanitizeCalendarItem).filter((item): item is CalendarItem => Boolean(item));
 
         if (!Array.isArray(imported) || !validItems.length) {
@@ -556,6 +570,11 @@ export default function HomePage() {
     };
     reader.readAsText(file);
     event.target.value = '';
+  };
+
+  const clearCalendar = () => {
+    setItems([]);
+    setScheduleStatus('Semua item calendar berhasil dihapus.');
   };
 
   return (
@@ -738,6 +757,7 @@ export default function HomePage() {
           <input placeholder="Cari caption / judul produk..." value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} />
           <button type="button" onClick={exportCalendar}>Export JSON</button>
           <button type="button" onClick={() => fileInputRef.current?.click()}>Import JSON</button>
+          <button type="button" onClick={clearCalendar} disabled={!items.length}>Clear Calendar</button>
           <input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportCalendar} style={{ display: 'none' }} />
         </div>
 
