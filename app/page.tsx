@@ -48,6 +48,7 @@ type Tone = 'friendly' | 'urgent' | 'premium';
 type CalendarFilter = 'all' | 'instagram' | 'facebook';
 type CaptionTemplate = 'softsell' | 'hardsell' | 'storytelling';
 type DayPart = 'pagi' | 'siang' | 'malam';
+type CalendarImportItem = Partial<CalendarItem>;
 
 const STORAGE_CALENDAR_KEY = 'resellio-calendar-items-v2';
 const STORAGE_SETTINGS_KEY = 'resellio-user-settings-v2';
@@ -128,6 +129,42 @@ function safeParse<T>(value: string | null, fallback: T): T {
     return fallback;
   }
 }
+
+const CALENDAR_STATUS: CalendarItem['status'][] = ['draft', 'scheduled', 'posted'];
+const CALENDAR_CHANNEL: CalendarItem['channel'][] = ['instagram', 'facebook'];
+
+function sanitizeCalendarItem(rawItem: CalendarImportItem): CalendarItem | null {
+  if (!rawItem || typeof rawItem !== 'object') return null;
+
+  const hasDate = typeof rawItem.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawItem.date);
+  const hasTime = typeof rawItem.time === 'string' && /^\d{2}:\d{2}/.test(rawItem.time);
+  const hasCaption = typeof rawItem.caption === 'string' && rawItem.caption.trim().length > 0;
+
+  if (!hasDate || !hasTime || !hasCaption) {
+    return null;
+  }
+
+  const channel = CALENDAR_CHANNEL.includes(rawItem.channel as CalendarItem['channel'])
+    ? (rawItem.channel as CalendarItem['channel'])
+    : 'instagram';
+
+  const status = CALENDAR_STATUS.includes(rawItem.status as CalendarItem['status'])
+    ? (rawItem.status as CalendarItem['status'])
+    : 'draft';
+
+  return {
+    id: typeof rawItem.id === 'string' && rawItem.id.trim() ? rawItem.id : crypto.randomUUID(),
+    date: rawItem.date,
+    time: rawItem.time.slice(0, 5),
+    caption: rawItem.caption.trim(),
+    channel,
+    image: typeof rawItem.image === 'string' ? rawItem.image : undefined,
+    productTitle: typeof rawItem.productTitle === 'string' ? rawItem.productTitle : undefined,
+    status
+  };
+}
+
+const sortCalendarItems = (list: CalendarItem[]) => [...list].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
 
 const postingTips: Record<'instagram' | 'facebook', Record<DayPart, string>> = {
   instagram: {
@@ -303,6 +340,8 @@ export default function HomePage() {
     event.preventDefault();
     if (!link.trim()) return;
 
+    const normalizedLink = /^https?:\/\//i.test(link.trim()) ? link.trim() : `https://${link.trim()}`;
+
     setLoadingGrabber(true);
     setGrabberError('');
 
@@ -310,7 +349,7 @@ export default function HomePage() {
       const response = await fetch('/api/grab', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: link.trim() })
+        body: JSON.stringify({ url: normalizedLink })
       });
 
       const data = (await response.json()) as ProductData | { error: string };
@@ -319,6 +358,7 @@ export default function HomePage() {
       }
 
       setProduct(data);
+      setLink(normalizedLink);
 
       if (data.niche) setNiche(data.niche);
       if (data.hashtags?.length) setExtraTagsInput(data.hashtags.join(', '));
@@ -358,6 +398,12 @@ export default function HomePage() {
       return;
     }
 
+    const scheduleAt = new Date(`${scheduleDate}T${scheduleTime}`);
+    if (Number.isNaN(scheduleAt.getTime()) || scheduleAt.getTime() < Date.now()) {
+      setScheduleStatus('Jadwal posting harus di masa depan.');
+      return;
+    }
+
     const productUrl = product?.url ?? (link.trim() || null);
 
     const newItem: CalendarItem = {
@@ -371,7 +417,7 @@ export default function HomePage() {
       status: 'scheduled'
     };
 
-    setItems((prev) => [...prev, newItem].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+    setItems((prev) => sortCalendarItems([...prev, newItem]));
 
     if (!webhookUrl) {
       setScheduleStatus('Jadwal tersimpan di Content Calendar (localStorage).');
@@ -379,19 +425,23 @@ export default function HomePage() {
     }
 
     try {
-      await fetch(webhookUrl, {
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           caption,
           channel,
-          scheduleAt: `${scheduleDate}T${scheduleTime}`,
+          scheduleAt: scheduleAt.toISOString(),
           image: product?.image ?? null,
           productTitle: product?.title ?? null,
           productUrl,
           source: product?.source ?? null
         })
       });
+
+      if (!response.ok) {
+        throw new Error(`Webhook merespons status ${response.status}`);
+      }
       setScheduleStatus('Jadwal tersimpan dan payload sukses dikirim ke webhook/Meta relay.');
     } catch {
       setScheduleStatus('Jadwal tersimpan lokal. Pengiriman webhook gagal, cek URL endpoint.');
@@ -420,7 +470,7 @@ export default function HomePage() {
       status: 'draft'
     };
 
-    setItems((prev) => [...prev, cloned].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)));
+    setItems((prev) => sortCalendarItems([...prev, cloned]));
   };
 
   const exportCalendar = () => {
@@ -477,13 +527,29 @@ export default function HomePage() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const imported = safeParse<CalendarItem[]>(String(reader.result), []);
-        if (!Array.isArray(imported) || !imported.length) {
+        const imported = safeParse<CalendarImportItem[]>(String(reader.result), []);
+        const validItems = imported.map(sanitizeCalendarItem).filter((item): item is CalendarItem => Boolean(item));
+
+        if (!Array.isArray(imported) || !validItems.length) {
           setScheduleStatus('File import tidak valid atau kosong.');
           return;
         }
-        setItems(imported);
-        setScheduleStatus('Calendar berhasil diimport dari file JSON.');
+
+        setItems((prev) => {
+          const mergedMap = new Map<string, CalendarItem>();
+          for (const item of [...prev, ...validItems]) {
+            const dedupeKey = `${item.channel}-${item.date}-${item.time}-${item.caption}`;
+            mergedMap.set(dedupeKey, item);
+          }
+          return sortCalendarItems([...mergedMap.values()]);
+        });
+
+        const skippedCount = imported.length - validItems.length;
+        setScheduleStatus(
+          skippedCount > 0
+            ? `Calendar diimport: ${validItems.length} item valid, ${skippedCount} item dilewati karena format tidak valid.`
+            : `Calendar berhasil diimport: ${validItems.length} item ditambahkan/diupdate.`
+        );
       } catch {
         setScheduleStatus('Gagal membaca file import.');
       }
@@ -638,6 +704,16 @@ export default function HomePage() {
               </select>
             </label>
             <p className="muted">Rekomendasi: <strong>{postingTips[channel][dayPart]}</strong></p>
+            <button
+              type="button"
+              onClick={() => {
+                const suggestMap: Record<DayPart, string> = { pagi: '08:00', siang: '13:00', malam: '20:00' };
+                if (!scheduleDate) setScheduleDate(new Date().toISOString().slice(0, 10));
+                setScheduleTime(suggestMap[dayPart]);
+              }}
+            >
+              Gunakan jam rekomendasi
+            </button>
             <label>Webhook/Meta Endpoint (opsional)
               <input type="url" placeholder="https://example.com/meta-webhook" value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} />
             </label>
