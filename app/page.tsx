@@ -54,6 +54,21 @@ type CalendarImportPayload = CalendarImportItem[] | { items?: CalendarImportItem
 const STORAGE_CALENDAR_KEY = 'resellio-calendar-items-v2';
 const STORAGE_SETTINGS_KEY = 'resellio-user-settings-v2';
 
+function calculateRecommendedPrice(
+  baseCost: number,
+  markup: number,
+  shipping: number,
+  platformFee: number,
+  ads: number,
+  psychologicalPricing: boolean
+) {
+  const margin = (baseCost * markup) / 100;
+  const raw = baseCost + margin + shipping + platformFee + ads;
+
+  if (!psychologicalPricing || raw <= 1000) return raw;
+  return Math.floor(raw / 1000) * 1000 + 900;
+}
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
 
@@ -219,7 +234,10 @@ export default function HomePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    const savedItems = safeParse<CalendarItem[]>(localStorage.getItem(STORAGE_CALENDAR_KEY), []);
+    const savedItems = safeParse<CalendarImportPayload>(localStorage.getItem(STORAGE_CALENDAR_KEY), []);
+    const sanitizedItems = (Array.isArray(savedItems) ? savedItems : savedItems?.items ?? [])
+      .map(sanitizeCalendarItem)
+      .filter((item): item is CalendarItem => Boolean(item));
     const savedSettings = safeParse<{
       markup: number;
       shipping: number;
@@ -235,7 +253,7 @@ export default function HomePage() {
       dayPart: DayPart;
     } | null>(localStorage.getItem(STORAGE_SETTINGS_KEY), null);
 
-    setItems(savedItems);
+    setItems(sortCalendarItems(sanitizedItems));
 
     if (savedSettings) {
       setMarkup(savedSettings.markup ?? 25);
@@ -370,7 +388,15 @@ export default function HomePage() {
 
       const generatedNiche = data.niche || niche;
       const generatedTags = data.hashtags?.length ? data.hashtags : extraHashtags;
-      setCaption(buildCaption(generatedNiche, data.title, finalPrice || data.price, tone, generatedTags, template));
+      const previewPrice = calculateRecommendedPrice(
+        data.price,
+        markup,
+        shipping,
+        platformFee,
+        ads,
+        psychologicalPricing
+      );
+      setCaption(buildCaption(generatedNiche, data.title, previewPrice || data.price, tone, generatedTags, template));
       setCaptionStatus('Metadata produk berhasil diambil, niche & hashtag terisi otomatis.');
     } catch (error) {
       setGrabberError(error instanceof Error ? error.message : 'Terjadi kesalahan.');
@@ -470,10 +496,15 @@ export default function HomePage() {
   };
 
   const duplicateTomorrow = (item: CalendarItem) => {
-    const sourceDate = new Date(`${item.date}T${item.time}`);
+    const [year, month, day] = item.date.split('-').map(Number);
+    const sourceDate = new Date(year, (month || 1) - 1, day || 1);
     sourceDate.setDate(sourceDate.getDate() + 1);
-    const nextDate = sourceDate.toISOString().slice(0, 10);
-    const nextTime = sourceDate.toTimeString().slice(0, 5);
+    const nextDate = [
+      sourceDate.getFullYear(),
+      String(sourceDate.getMonth() + 1).padStart(2, '0'),
+      String(sourceDate.getDate()).padStart(2, '0')
+    ].join('-');
+    const nextTime = item.time;
 
     const cloned: CalendarItem = {
       ...item,
